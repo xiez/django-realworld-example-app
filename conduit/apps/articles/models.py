@@ -1,6 +1,11 @@
 from django.db import models
+import django.db.models.options as options
 
 from conduit.apps.core.models import TimestampedModel
+
+options.DEFAULT_NAMES = options.DEFAULT_NAMES + (
+    'es_index_name', 'es_type_name', 'es_mapping'
+)
 
 
 class Article(TimestampedModel):
@@ -25,6 +30,71 @@ class Article(TimestampedModel):
 
     def __str__(self):
         return self.title
+
+    class Meta:
+        es_index_name = 'conduit'
+        es_type_name = 'article'
+        es_mapping = {
+            'properties': {
+                'slug': {
+                    'type': 'keyword',
+                },
+                'title': {
+                    'type': 'string',
+                    'analyzer': 'simple',
+                },
+                'description': {
+                    'type': 'text',
+                    'analyzer': 'simple',
+                },
+                'body': {
+                    'type': 'text',
+                    'analyzer': 'simple',
+                },
+                'tagList': {
+                    'type': 'string',
+                },
+                'createdAt': {
+                    'type': 'date',
+                },
+                'updatedAt': {
+                    'type': 'date',
+                },
+            }
+        }
+
+    def es_repr(self):
+        data = {}
+        mapping = self._meta.es_mapping
+        data['_id'] = self.pk
+        for field_name in mapping['properties'].keys():
+            data[field_name] = self.field_es_repr(field_name)
+        return data
+
+    def field_es_repr(self, field_name):
+        config = self._meta.es_mapping['properties'][field_name]
+
+        if hasattr(self, 'get_es_%s' % field_name):
+            field_es_value = getattr(self, 'get_es_%s' % field_name)()
+        else:
+            if config['type'] == 'object':
+                related_object = getattr(self, field_name)
+                field_es_value = {}
+                field_es_value['_id'] = related_object.pk
+                for prop in config['properties'].keys():
+                    field_es_value[prop] = getattr(related_object, prop)
+            else:
+                field_es_value = getattr(self, field_name)
+        return field_es_value
+
+    def get_es_createdAt(self):
+        return self.created_at
+
+    def get_es_updatedAt(self):
+        return self.updated_at
+
+    def get_es_tagList(self):
+        return [x.tag for x in self.tags.all()]
 
 
 class Comment(TimestampedModel):

@@ -132,6 +132,7 @@ STATIC_URL = '/static/'
 CORS_ORIGIN_WHITELIST = (
     '0.0.0.0:4000',
     'localhost:4000',
+    'localhost:4100',
 )
 
 # Tell Django about the custom `User` model we created. The string
@@ -150,3 +151,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 20,
 }
+
+from elasticsearch import Elasticsearch, RequestsHttpConnection
+ES_CLIENT = Elasticsearch(
+    ['http://seacloud.docker:9200/'],
+    connection_class=RequestsHttpConnection
+)

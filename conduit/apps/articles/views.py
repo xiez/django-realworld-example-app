@@ -1,3 +1,6 @@
+from copy import deepcopy
+
+from django.conf import settings
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import (
@@ -229,3 +232,81 @@ class ArticlesFeedAPIView(generics.ListAPIView):
         )
 
         return self.get_paginated_response(serializer.data)
+
+
+class ArticlesQueryAPIView(APIView):
+    permission_classes = (AllowAny,)
+
+    def gen_es_query(self, request):
+        req_dict = deepcopy(request.GET.dict())
+        if not req_dict:
+            return {'match_all': {}}
+        matches = []
+        for field_name in req_dict.keys():
+            if '__' in field_name:
+                filter_field_name = field_name.replace('__', '.')
+            else:
+                filter_field_name = field_name
+            for field_value in req_dict[field_name].split(','):
+                if not field_value:
+                    continue
+                matches.append(
+                    {
+                        'match': {filter_field_name: field_value},
+                    }
+                )
+        return {
+            'bool': {
+                'must': matches
+            }
+        }
+
+    def convert_hit_to_template(self, request, hit1):
+        hit = deepcopy(hit1)
+        almost_ready = hit['_source']
+        almost_ready['id'] = hit['_id']
+
+        try:
+            a = Article.objects.get(pk=hit['_id'])
+            almost_ready['favoritesCount'] = a.favorited_by.all().count()
+        except Article.DoesNotExist:
+            a = None
+            almost_ready['favoritesCount'] = 0
+
+        if a:
+            author = a.author
+            d = {}
+            d['username'] = author.user.username
+            d['bio'] = author.bio
+            d['image'] = author.image
+            if request.user.is_authenticated():
+                d['following'] = request.user.profile.is_following(author)
+            else:
+                d['following'] = False
+
+            almost_ready['author'] = d
+        else:
+            almost_ready['author'] = {}
+
+        if request.user.is_authenticated() and a:
+            almost_ready['favorited'] = request.user.profile.has_favorited(a)
+        else:
+            almost_ready['favorited'] = False
+
+        return almost_ready
+
+    def get(self, request, format=None):
+        body = {}
+        es_query = self.gen_es_query(self.request)
+        body.update({'query': es_query})
+
+        client = settings.ES_CLIENT
+        search_result = client.search(index='conduit', doc_type='article', body=body)
+
+        context = {}
+        context['hits'] = [
+            self.convert_hit_to_template(request, c) for c in search_result['hits']['hits']
+        ]
+
+        return Response(context,
+                        status=status.HTTP_200_OK)

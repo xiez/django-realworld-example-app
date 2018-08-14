@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ArticleViewSet, ArticlesFavoriteAPIView, ArticlesFeedAPIView,
-    CommentsListCreateAPIView, CommentsDestroyAPIView, TagListAPIView
+    CommentsListCreateAPIView, CommentsDestroyAPIView, TagListAPIView,
+    ArticlesQueryAPIView
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -25,4 +26,7 @@ urlpatterns = [
         CommentsDestroyAPIView.as_view()),
 
     url(r'^tags/?$', TagListAPIView.as_view()),
+
+    url(r'^indexes/articles/?$', ArticlesQueryAPIView.as_view()),
+
 ]
